@@ -44,6 +44,99 @@ const silverMarketData = {
   }
 };
 
+const FOMC_2026_UTC = [
+  '2026-01-28T19:00:00Z',
+  '2026-03-18T18:00:00Z',
+  '2026-04-29T18:00:00Z',
+  '2026-06-17T18:00:00Z',
+  '2026-07-29T18:00:00Z',
+  '2026-09-23T18:00:00Z',
+  '2026-11-04T19:00:00Z',
+  '2026-12-16T19:00:00Z'
+];
+
+function toMoscowLabel(date) {
+  return date.toLocaleString('ru-RU', {
+    timeZone: 'Europe/Moscow',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function firstWeekdayOfMonth(year, month, weekday) {
+  const date = new Date(Date.UTC(year, month, 1, 13, 30, 0));
+  while (date.getUTCDay() !== weekday) {
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+  return date;
+}
+
+function firstBusinessDayOfMonth(year, month) {
+  const date = new Date(Date.UTC(year, month, 1, 15, 0, 0));
+  while (date.getUTCDay() === 0 || date.getUTCDay() === 6) {
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+  return date;
+}
+
+function cpiDateOfMonth(year, month) {
+  const date = new Date(Date.UTC(year, month, 13, 13, 30, 0));
+  while (date.getUTCDay() === 0 || date.getUTCDay() === 6) {
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+  return date;
+}
+
+function getUpcomingUseventsMsk() {
+  const now = new Date();
+  const events = [];
+
+  for (const iso of FOMC_2026_UTC) {
+    const dt = new Date(iso);
+    if (dt >= now) {
+      events.push({
+        event: 'FOMC: решение по ставке',
+        timestamp: dt.toISOString(),
+        mskTime: toMoscowLabel(dt)
+      });
+    }
+  }
+
+  for (let m = 0; m < 4; m++) {
+    const target = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + m, 1));
+    const y = target.getUTCFullYear();
+    const mon = target.getUTCMonth();
+
+    const nfp = firstWeekdayOfMonth(y, mon, 5); // Friday
+    const pmi = firstBusinessDayOfMonth(y, mon);
+    pmi.setUTCHours(15, 0, 0, 0); // 18:00 MSK
+    const cpi = cpiDateOfMonth(y, mon);
+
+    const candidates = [
+      { event: 'Non-Farm Payrolls (США)', dt: nfp },
+      { event: 'ISM Manufacturing PMI (США)', dt: pmi },
+      { event: 'CPI (инфляция США)', dt: cpi }
+    ];
+
+    for (const item of candidates) {
+      if (item.dt >= now) {
+        events.push({
+          event: item.event,
+          timestamp: item.dt.toISOString(),
+          mskTime: toMoscowLabel(item.dt)
+        });
+      }
+    }
+  }
+
+  return events
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    .slice(0, 12);
+}
+
 async function fetchFredSeries(seriesId) {
   if (!config.fredApiKey) return null;
 
@@ -126,6 +219,7 @@ export async function getFundamentalData() {
           description: 'Global uncertainties increase safe-haven demand'
         }
       ],
+      upcomingEvents: getUpcomingUseventsMsk(),
       timestamp: new Date().toISOString()
     };
 
@@ -148,6 +242,7 @@ function getDefaultFundamentals() {
       { factor: 'Supply Deficit', impact: 'BULLISH', description: 'Market undersupplied' },
       { factor: 'Fed Policy', impact: 'NEUTRAL', description: 'Rate path uncertain' }
     ],
+    upcomingEvents: getUpcomingUseventsMsk(),
     timestamp: new Date().toISOString()
   };
 }

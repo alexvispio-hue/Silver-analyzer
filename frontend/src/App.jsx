@@ -82,6 +82,14 @@ export default function App() {
         setLastUpdate(new Date());
       } else if (data.type === 'signal') {
         setSignal(data.data);
+        Promise.all([api.getSignalHistory(20), api.getSignalStats()])
+          .then(([historySignals, statsData]) => {
+            setSignalHistory(historySignals);
+            setSignalStats(statsData);
+          })
+          .catch((err) => {
+            console.error('Error refreshing signal stats:', err);
+          });
       }
     });
 
@@ -128,7 +136,12 @@ export default function App() {
         <TechnicalPanel analysis={technical} />
 
         <PriceChart history={priceHistory} levels={technical?.levels} />
-        <LevelsCard levels={technical?.levels} currentPrice={price?.price} />
+        <LevelsCard
+          levels={technical?.levels}
+          currentPrice={price?.price}
+          volumeClusters={technical?.volumeClusters}
+          longTermSupports={technical?.longTermSupports}
+        />
 
         <NewsPanel news={news} />
         <FundamentalPanel data={fundamental} />

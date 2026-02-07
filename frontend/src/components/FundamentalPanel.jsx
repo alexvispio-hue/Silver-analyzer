@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+﻿import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 export default function FundamentalPanel({ data }) {
   if (!data) return <div className="card fundamental-card loading"><div className="spinner" /></div>;
@@ -89,6 +89,30 @@ export default function FundamentalPanel({ data }) {
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="fundamental-item" style={{ gridColumn: 'span 2' }}>
+          <div className="fundamental-label">Ближайшие события США</div>
+          {data.upcomingEvents?.length ? (
+            <table className="events-table">
+              <thead>
+                <tr>
+                  <th>Событие</th>
+                  <th>Дата/время (МСК)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.upcomingEvents.map((item, i) => (
+                  <tr key={`${item.event}-${item.timestamp}-${i}`}>
+                    <td>{item.event}</td>
+                    <td>{item.mskTime}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="fundamental-impact">Нет ближайших событий</div>
+          )}
         </div>
       </div>
     </div>

@@ -203,6 +203,7 @@ body {
 /* Timeframe Signals */
 .timeframes-container {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-top: 16px;
   padding-top: 16px;
@@ -210,7 +211,7 @@ body {
 }
 
 .timeframe-signal {
-  flex: 1;
+  flex: 1 1 180px;
   padding: 12px;
   background: var(--bg-secondary);
   border-radius: 8px;
@@ -390,6 +391,54 @@ body {
   font-weight: 600;
 }
 
+.cluster-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.cluster-title {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.cluster-item {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+
+.cluster-type {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cluster-type.support {
+  color: var(--accent-green);
+}
+
+.cluster-type.resistance {
+  color: var(--accent-red);
+}
+
+.cluster-range {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cluster-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
 /* News Card */
 .news-card {
   grid-column: span 6;
@@ -466,6 +515,26 @@ body {
 .fundamental-impact {
   font-size: 11px;
   margin-top: 4px;
+}
+
+.events-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+
+.events-table th,
+.events-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+  text-align: left;
+  font-size: 12px;
+}
+
+.events-table th {
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-size: 11px;
 }
 
 /* Signal History */

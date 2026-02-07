@@ -46,8 +46,8 @@ export default function PriceChart({ history: initialHistory, levels }) {
         }
       } catch (error) {
         console.error('Error fetching chart data:', error);
-        // Fallback к начальным данным
-        if (initialHistory && initialHistory.length > 0) {
+        // For non-daily timeframes do not silently fall back to daily candles.
+        if (timeframe === '1d' && initialHistory && initialHistory.length > 0) {
           const processed = initialHistory.map(item => ({
             date: item.date,
             open: item.open,
@@ -165,7 +165,7 @@ export default function PriceChart({ history: initialHistory, levels }) {
                     padding: '12px'
                   }}>
                     <div style={{ color: '#8b949e', marginBottom: '8px' }}>
-                      {new Date(label).toLocaleDateString('ru-RU')}
+                      {new Date(label).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: timeframe === '1h' || timeframe === '4h' ? '2-digit' : undefined, minute: timeframe === '1h' || timeframe === '4h' ? '2-digit' : undefined })}
                     </div>
                     <div style={{ display: 'grid', gap: '4px', fontSize: '13px' }}>
                       <div>Открытие: <span style={{ color: '#fff' }}>${data.open?.toFixed(2)}</span></div>
@@ -182,7 +182,7 @@ export default function PriceChart({ history: initialHistory, levels }) {
             {levels?.support?.map((level, i) => (
               <ReferenceLine
                 key={`support-${i}`}
-                y={level}
+                y={Number(level?.price ?? level)}
                 stroke="#00d26a"
                 strokeDasharray="5 5"
                 strokeOpacity={0.7}
@@ -199,7 +199,7 @@ export default function PriceChart({ history: initialHistory, levels }) {
             {levels?.resistance?.map((level, i) => (
               <ReferenceLine
                 key={`resistance-${i}`}
-                y={level}
+                y={Number(level?.price ?? level)}
                 stroke="#ff4757"
                 strokeDasharray="5 5"
                 strokeOpacity={0.7}

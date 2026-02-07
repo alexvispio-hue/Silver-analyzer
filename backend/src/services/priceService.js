@@ -1,9 +1,13 @@
 import { priceDb } from '../models/database.js';
 
 let cachedQuote = null;
-let cachedHistory = [];
 let lastUpdate = 0;
-let lastHistoryUpdate = 0;
+const historyPeriodCache = {
+  '1mo': { data: [], lastUpdate: 0 },
+  '3mo': { data: [], lastUpdate: 0 },
+  '6mo': { data: [], lastUpdate: 0 },
+  '1y': { data: [], lastUpdate: 0 }
+};
 
 // GoldPrice.org API - free, no API key required, real-time COMEX/spot prices
 const GOLDPRICE_API = 'https://data-asg.goldprice.org/dbXRates/USD';
@@ -31,6 +35,38 @@ async function fetchYahooHistorical(range = '3mo', interval = '1d') {
   }
 
   return data.chart.result[0];
+}
+
+function buildCandlesFromYahoo(result) {
+  const timestamps = result.timestamp || [];
+  const quote = result.indicators?.quote?.[0];
+
+  if (!quote || !timestamps.length) return [];
+
+  const candles = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    const open = quote.open?.[i];
+    const high = quote.high?.[i];
+    const low = quote.low?.[i];
+    const close = quote.close?.[i];
+    const volume = quote.volume?.[i];
+
+    if ([open, high, low, close].some((v) => typeof v !== 'number' || !Number.isFinite(v))) {
+      continue;
+    }
+
+    candles.push({
+      timestamp: timestamps[i] * 1000,
+      date: new Date(timestamps[i] * 1000).toISOString(),
+      open,
+      high,
+      low,
+      close,
+      volume: Number.isFinite(volume) ? volume : 0
+    });
+  }
+
+  return candles;
 }
 
 // Кэш для разных таймфреймов
@@ -112,41 +148,34 @@ export async function getCurrentPrice() {
 export async function getHistoricalData(period = '3mo') {
   try {
     const now = Date.now();
+    const range = ['1mo', '3mo', '6mo', '1y'].includes(period) ? period : '3mo';
+    const cache = historyPeriodCache[range];
 
-    // Return cached data if less than 10 minutes old
-    if (cachedHistory.length > 0 && now - lastHistoryUpdate < 600000) {
-      return cachedHistory;
-    }
-
-    // Map period to Yahoo Finance range
-    let range;
-    switch (period) {
-      case '1mo': range = '1mo'; break;
-      case '3mo': range = '3mo'; break;
-      case '6mo': range = '6mo'; break;
-      case '1y': range = '1y'; break;
-      default: range = '3mo';
+    // Return cached data for this period if less than 10 minutes old
+    if (cache.data.length > 0 && now - cache.lastUpdate < 600000) {
+      return cache.data;
     }
 
     const result = await fetchYahooHistorical(range);
+    const candles = buildCandlesFromYahoo(result);
 
-    const timestamps = result.timestamp;
-    const quotes = result.indicators.quote[0];
+    const history = candles.map((candle) => ({
+      date: candle.date.split('T')[0],
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: candle.volume
+    }));
 
-    cachedHistory = timestamps.map((ts, i) => ({
-      date: new Date(ts * 1000).toISOString().split('T')[0],
-      open: quotes.open[i],
-      high: quotes.high[i],
-      low: quotes.low[i],
-      close: quotes.close[i],
-      volume: quotes.volume[i]
-    })).filter(item => item.close !== null);
-
-    lastHistoryUpdate = now;
-    return cachedHistory;
+    cache.data = history;
+    cache.lastUpdate = now;
+    return history;
   } catch (error) {
     console.error('Error fetching historical data from Yahoo Finance:', error.message);
-    if (cachedHistory.length > 0) return cachedHistory;
+    const range = ['1mo', '3mo', '6mo', '1y'].includes(period) ? period : '3mo';
+    const cache = historyPeriodCache[range];
+    if (cache.data.length > 0) return cache.data;
     throw error;
   }
 }
@@ -194,19 +223,7 @@ export async function getChartData(timeframe = '1d') {
     }
 
     const result = await fetchYahooHistorical(range, interval);
-
-    const timestamps = result.timestamp || [];
-    const quotes = result.indicators.quote[0];
-
-    let candles = timestamps.map((ts, i) => ({
-      timestamp: ts * 1000,
-      date: new Date(ts * 1000).toISOString(),
-      open: quotes.open[i],
-      high: quotes.high[i],
-      low: quotes.low[i],
-      close: quotes.close[i],
-      volume: quotes.volume[i]
-    })).filter(item => item.close !== null);
+    let candles = buildCandlesFromYahoo(result);
 
     // Для 4h агрегируем часовые свечи
     if (timeframe === '4h' && candles.length > 0) {
@@ -247,56 +264,33 @@ export async function getChartData(timeframe = '1d') {
 
 // Агрегация часовых свечей в 4-часовые
 function aggregate4HourCandles(hourlyCandles) {
-  const result = [];
-  let currentGroup = [];
+  const buckets = new Map();
 
-  for (let i = 0; i < hourlyCandles.length; i++) {
-    const candle = hourlyCandles[i];
-    const hour = new Date(candle.timestamp).getUTCHours();
-
-    // Группируем по 4-часовым интервалам (0-3, 4-7, 8-11, 12-15, 16-19, 20-23)
-    const groupIndex = Math.floor(hour / 4);
-
-    if (currentGroup.length === 0) {
-      currentGroup.push(candle);
-    } else {
-      const prevHour = new Date(currentGroup[0].timestamp).getUTCHours();
-      const prevGroupIndex = Math.floor(prevHour / 4);
-      const prevDate = new Date(currentGroup[0].timestamp).toDateString();
-      const currDate = new Date(candle.timestamp).toDateString();
-
-      if (groupIndex === prevGroupIndex && prevDate === currDate) {
-        currentGroup.push(candle);
-      } else {
-        // Закрываем группу и создаём 4h свечу
-        result.push(createAggregatedCandle(currentGroup));
-        currentGroup = [candle];
-      }
-    }
+  for (const candle of hourlyCandles) {
+    const bucketTs = Math.floor(candle.timestamp / (4 * 60 * 60 * 1000)) * (4 * 60 * 60 * 1000);
+    if (!buckets.has(bucketTs)) buckets.set(bucketTs, []);
+    buckets.get(bucketTs).push(candle);
   }
 
-  // Добавляем последнюю группу
-  if (currentGroup.length > 0) {
-    result.push(createAggregatedCandle(currentGroup));
-  }
-
-  return result;
+  return [...buckets.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([bucketTs, group]) => createAggregatedCandle(group, bucketTs));
 }
 
-// Создание агрегированной свечи из группы
-function createAggregatedCandle(candles) {
+// Build one aggregated candle from all candles in a 4-hour bucket.
+function createAggregatedCandle(candles, timestamp = candles[0].timestamp) {
+  const sorted = [...candles].sort((a, b) => a.timestamp - b.timestamp);
   return {
-    timestamp: candles[0].timestamp,
-    date: candles[0].date,
-    open: candles[0].open,
-    high: Math.max(...candles.map(c => c.high)),
-    low: Math.min(...candles.map(c => c.low)),
-    close: candles[candles.length - 1].close,
-    volume: candles.reduce((sum, c) => sum + (c.volume || 0), 0)
+    timestamp,
+    date: new Date(timestamp).toISOString(),
+    open: sorted[0].open,
+    high: Math.max(...sorted.map(c => c.high)),
+    low: Math.min(...sorted.map(c => c.low)),
+    close: sorted[sorted.length - 1].close,
+    volume: sorted.reduce((sum, c) => sum + (c.volume || 0), 0)
   };
 }
 
-// Получение человекочитаемого названия таймфрейма
 function getTimeframeLabel(timeframe) {
   const labels = {
     '1h': '1 час',

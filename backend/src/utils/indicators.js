@@ -343,6 +343,122 @@ export function calculateDetailedLevels(prices, highs, lows, currentPrice) {
   };
 }
 
+// Detect local price clusters using a simple volume profile.
+// Each returned zone has a low/high range (e.g. 77-79), center price and relative strength.
+export function calculateVolumeClusters(candles, currentPrice, bins = 30) {
+  if (!Array.isArray(candles) || candles.length < 20) {
+    return { support: [], resistance: [], all: [] };
+  }
+
+  const lows = candles.map((c) => c.low).filter((v) => Number.isFinite(v));
+  const highs = candles.map((c) => c.high).filter((v) => Number.isFinite(v));
+  if (!lows.length || !highs.length) {
+    return { support: [], resistance: [], all: [] };
+  }
+
+  const minPrice = Math.min(...lows);
+  const maxPrice = Math.max(...highs);
+  const range = maxPrice - minPrice;
+  if (!Number.isFinite(range) || range <= 0) {
+    return { support: [], resistance: [], all: [] };
+  }
+
+  const safeBins = Math.max(12, Math.min(60, bins));
+  const step = range / safeBins;
+  const profile = Array.from({ length: safeBins }, (_, i) => ({
+    low: minPrice + i * step,
+    high: minPrice + (i + 1) * step,
+    volume: 0,
+    touches: 0,
+    weightedPrice: 0
+  }));
+
+  for (const candle of candles) {
+    const high = candle.high;
+    const low = candle.low;
+    const close = candle.close;
+    if (![high, low, close].every(Number.isFinite)) continue;
+
+    const typicalPrice = (high + low + close) / 3;
+    const rawVolume = Number.isFinite(candle.volume) && candle.volume > 0 ? candle.volume : 1;
+    const index = Math.max(0, Math.min(safeBins - 1, Math.floor((typicalPrice - minPrice) / step)));
+    const bucket = profile[index];
+
+    bucket.volume += rawVolume;
+    bucket.touches += 1;
+    bucket.weightedPrice += typicalPrice * rawVolume;
+  }
+
+  const totalVolume = profile.reduce((sum, b) => sum + b.volume, 0);
+  if (totalVolume <= 0) {
+    return { support: [], resistance: [], all: [] };
+  }
+
+  const averageVolume = totalVolume / safeBins;
+  const minClusterVolume = averageVolume * 1.35;
+  const activeIndexes = profile
+    .map((b, idx) => ({ idx, volume: b.volume }))
+    .filter((b) => b.volume >= minClusterVolume)
+    .map((b) => b.idx);
+
+  if (!activeIndexes.length) {
+    return { support: [], resistance: [], all: [] };
+  }
+
+  const rawClusters = [];
+  let group = [activeIndexes[0]];
+
+  for (let i = 1; i < activeIndexes.length; i++) {
+    if (activeIndexes[i] === activeIndexes[i - 1] + 1) {
+      group.push(activeIndexes[i]);
+    } else {
+      rawClusters.push(group);
+      group = [activeIndexes[i]];
+    }
+  }
+  rawClusters.push(group);
+
+  const zones = rawClusters.map((indexes) => {
+    const slices = indexes.map((idx) => profile[idx]);
+    const low = slices[0].low;
+    const high = slices[slices.length - 1].high;
+    const volume = slices.reduce((sum, b) => sum + b.volume, 0);
+    const touches = slices.reduce((sum, b) => sum + b.touches, 0);
+    const weightedPrice = slices.reduce((sum, b) => sum + b.weightedPrice, 0);
+    const center = volume > 0 ? weightedPrice / volume : (low + high) / 2;
+    const volumeShare = volume / totalVolume;
+    const strength = Math.max(1, Math.min(100, Math.round(volumeShare * 400)));
+
+    return {
+      low: parseFloat(low.toFixed(2)),
+      high: parseFloat(high.toFixed(2)),
+      center: parseFloat(center.toFixed(2)),
+      touches,
+      volume: Math.round(volume),
+      volumeShare: parseFloat((volumeShare * 100).toFixed(2)),
+      strength,
+      type: center < currentPrice ? 'support' : 'resistance',
+      distancePercent: parseFloat((((center - currentPrice) / currentPrice) * 100).toFixed(2))
+    };
+  });
+
+  const sortedByStrength = [...zones].sort((a, b) => b.strength - a.strength);
+  const support = sortedByStrength
+    .filter((z) => z.type === 'support')
+    .sort((a, b) => b.center - a.center)
+    .slice(0, 4);
+  const resistance = sortedByStrength
+    .filter((z) => z.type === 'resistance')
+    .sort((a, b) => a.center - b.center)
+    .slice(0, 4);
+
+  return {
+    support,
+    resistance,
+    all: sortedByStrength.slice(0, 8)
+  };
+}
+
 // Determine trend
 export function determineTrend(prices) {
   if (prices.length < 50) return 'NEUTRAL';
