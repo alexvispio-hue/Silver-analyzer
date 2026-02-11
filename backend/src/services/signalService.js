@@ -13,6 +13,134 @@ const SIGNALS = {
   STRONG_SELL: 'STRONG_SELL'
 };
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function round(value, digits = 2) {
+  if (!Number.isFinite(value)) return null;
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function averageTrueRangePercent(candles, period = 14) {
+  if (!Array.isArray(candles) || candles.length < period + 1) return null;
+
+  const recent = candles.slice(-(period + 1));
+  const ranges = [];
+
+  for (let i = 1; i < recent.length; i++) {
+    const current = recent[i];
+    const previous = recent[i - 1];
+    if (![current?.high, current?.low, previous?.close].every(Number.isFinite) || previous.close <= 0) {
+      continue;
+    }
+
+    const trueRange = Math.max(
+      current.high - current.low,
+      Math.abs(current.high - previous.close),
+      Math.abs(current.low - previous.close)
+    );
+
+    ranges.push((trueRange / previous.close) * 100);
+  }
+
+  if (!ranges.length) return null;
+  return ranges.reduce((sum, value) => sum + value, 0) / ranges.length;
+}
+
+function getLevelDistancePercent(price, level, direction) {
+  if (!Number.isFinite(price) || !Number.isFinite(level) || price <= 0) return null;
+
+  if (direction === 'up' && level > price) {
+    return ((level - price) / price) * 100;
+  }
+
+  if (direction === 'down' && level < price) {
+    return ((price - level) / price) * 100;
+  }
+
+  return null;
+}
+
+function buildIntradayTradePlan(signal, score, price, candles1h, candles4h, levels = {}) {
+  if (!Number.isFinite(price) || price <= 0) return null;
+
+  const isLong = signal?.includes('BUY');
+  const isShort = signal?.includes('SELL');
+  const atr1hPct = averageTrueRangePercent(candles1h, 14);
+  const atr4hPct = averageTrueRangePercent(candles4h, 14);
+  const rawVolatility = Number.isFinite(atr1hPct)
+    ? atr1hPct
+    : (Number.isFinite(atr4hPct) ? atr4hPct * 0.55 : 0.8);
+  const volatilityPct = clamp(rawVolatility, 0.25, 2.2);
+
+  if (!isLong && !isShort) {
+    const breakoutTriggerPct = round(clamp(volatilityPct * 0.9, 0.25, 1.4), 2);
+    return {
+      direction: 'WAIT',
+      breakoutUpPercent: breakoutTriggerPct,
+      breakoutDownPercent: breakoutTriggerPct,
+      note: 'No directional edge. Wait for breakout confirmation.',
+      timeWindow: '1-4h'
+    };
+  }
+
+  const confidence = clamp(Math.abs(Number.isFinite(score) ? score : 0) / 100, 0, 1);
+  let takeProfitPct = clamp(volatilityPct * (1.35 + confidence * 0.85), 0.45, 3.2);
+  let stopLossPct = clamp(takeProfitPct * (0.50 - confidence * 0.10), 0.25, 1.7);
+
+  const supports = (levels.support || []).filter(Number.isFinite);
+  const resistances = (levels.resistance || []).filter(Number.isFinite);
+  const nearestSupport = supports.length ? Math.max(...supports.filter((level) => level < price)) : null;
+  const nearestResistance = resistances.length ? Math.min(...resistances.filter((level) => level > price)) : null;
+
+  if (isLong) {
+    const tpCap = getLevelDistancePercent(price, nearestResistance, 'up');
+    const slCap = getLevelDistancePercent(price, nearestSupport, 'down');
+    if (Number.isFinite(tpCap) && tpCap > 0.25) {
+      takeProfitPct = Math.min(takeProfitPct, tpCap * 0.92);
+    }
+    if (Number.isFinite(slCap) && slCap > 0.2) {
+      stopLossPct = Math.min(stopLossPct, slCap * 0.88);
+    }
+  } else if (isShort) {
+    const tpCap = getLevelDistancePercent(price, nearestSupport, 'down');
+    const slCap = getLevelDistancePercent(price, nearestResistance, 'up');
+    if (Number.isFinite(tpCap) && tpCap > 0.25) {
+      takeProfitPct = Math.min(takeProfitPct, tpCap * 0.92);
+    }
+    if (Number.isFinite(slCap) && slCap > 0.2) {
+      stopLossPct = Math.min(stopLossPct, slCap * 0.88);
+    }
+  }
+
+  takeProfitPct = clamp(takeProfitPct, 0.35, 3.2);
+  stopLossPct = clamp(stopLossPct, 0.2, 1.9);
+  if (takeProfitPct / stopLossPct < 1.4) {
+    stopLossPct = clamp(takeProfitPct / 1.4, 0.2, 1.9);
+  }
+
+  const takeProfitPrice = isLong
+    ? price * (1 + (takeProfitPct / 100))
+    : price * (1 - (takeProfitPct / 100));
+  const stopLossPrice = isLong
+    ? price * (1 - (stopLossPct / 100))
+    : price * (1 + (stopLossPct / 100));
+
+  return {
+    direction: isLong ? 'LONG' : 'SHORT',
+    entryPrice: round(price, 4),
+    takeProfitPercent: round(takeProfitPct, 2),
+    stopLossPercent: round(stopLossPct, 2),
+    takeProfitPrice: round(takeProfitPrice, 4),
+    stopLossPrice: round(stopLossPrice, 4),
+    riskRewardRatio: round(takeProfitPct / stopLossPct, 2),
+    volatilityContextPercent: round(volatilityPct, 2),
+    timeWindow: '1-4h'
+  };
+}
+
 function classifySignal(score, thresholds = { buy: 35, strongBuy: 55, sell: -35, strongSell: -55 }) {
   if (score >= thresholds.strongBuy) return SIGNALS.STRONG_BUY;
   if (score >= thresholds.buy) return SIGNALS.BUY;
@@ -121,16 +249,34 @@ async function generateIntradaySignal(technicalData, fundamentalData, newsData, 
   }
 
   const totalScore = (techScore * 0.65) + (newsData.score * 0.25) + (fundamentalData.score * 0.10);
+  const intradaySignal = classifySignal(totalScore, { buy: 30, strongBuy: 52, sell: -30, strongSell: -52 });
+  const tradePlan = buildIntradayTradePlan(
+    intradaySignal,
+    totalScore,
+    priceData.price,
+    candles1h,
+    candles4h,
+    technicalData.levels
+  );
 
   if (newsData.score > 25) reasoning.push('Positive news flow');
   else if (newsData.score < -25) reasoning.push('Negative news flow');
 
+  if (tradePlan?.direction === 'LONG') {
+    reasoning.unshift(`Plan 1-4h: TP +${tradePlan.takeProfitPercent}% / SL -${tradePlan.stopLossPercent}%`);
+  } else if (tradePlan?.direction === 'SHORT') {
+    reasoning.unshift(`Plan 1-4h: TP -${tradePlan.takeProfitPercent}% / SL +${tradePlan.stopLossPercent}%`);
+  } else if (tradePlan?.direction === 'WAIT') {
+    reasoning.unshift(`Plan 1-4h: wait for breakout +/-${tradePlan.breakoutUpPercent}%`);
+  }
+
   return {
     timeframe: 'intraday',
     timeframeLabel: '1-4 часа',
-    signal: classifySignal(totalScore, { buy: 30, strongBuy: 52, sell: -30, strongSell: -52 }),
+    signal: intradaySignal,
     score: parseFloat(totalScore.toFixed(2)),
     reasoning: reasoning.slice(0, 5),
+    tradePlan,
     components: {
       technical: { score: parseFloat(techScore.toFixed(2)), weight: 0.65 },
       news: { score: newsData.score, weight: 0.25 },
