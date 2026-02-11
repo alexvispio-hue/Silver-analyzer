@@ -22,6 +22,12 @@ export default function FundamentalPanel({ data }) {
     }
   };
 
+  const formatEventValue = (value) => {
+    if (value === null || value === undefined) return '—';
+    const text = String(value).trim();
+    return text.length ? text : '—';
+  };
+
   return (
     <div className="card fundamental-card">
       <div className="card-header">
@@ -94,22 +100,30 @@ export default function FundamentalPanel({ data }) {
         <div className="fundamental-item" style={{ gridColumn: 'span 2' }}>
           <div className="fundamental-label">Ближайшие события США</div>
           {data.upcomingEvents?.length ? (
-            <table className="events-table">
-              <thead>
-                <tr>
-                  <th>Событие</th>
-                  <th>Дата/время (МСК)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.upcomingEvents.map((item, i) => (
-                  <tr key={`${item.event}-${item.timestamp}-${i}`}>
-                    <td>{item.event}</td>
-                    <td>{item.mskTime}</td>
+            <div className="events-table-wrap">
+              <table className="events-table">
+                <thead>
+                  <tr>
+                    <th>Событие</th>
+                    <th>Дата/время (МСК)</th>
+                    <th>Прогноз</th>
+                    <th>Предыдущее</th>
+                    <th>Факт</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {data.upcomingEvents.map((item, i) => (
+                    <tr key={`${item.event}-${item.timestamp}-${i}`}>
+                      <td>{item.event}</td>
+                      <td>{item.mskTime}</td>
+                      <td>{formatEventValue(item.forecast)}</td>
+                      <td>{formatEventValue(item.previous)}</td>
+                      <td>{formatEventValue(item.actual)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div className="fundamental-impact">Нет ближайших событий</div>
           )}

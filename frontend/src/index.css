@@ -247,6 +247,49 @@ body {
   color: var(--text-secondary);
 }
 
+.trade-plan {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trade-plan-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.trade-plan-label {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.trade-plan-value {
+  font-weight: 600;
+}
+
+.trade-plan-value.tp {
+  color: var(--accent-green);
+}
+
+.trade-plan-value.sl {
+  color: var(--accent-red);
+}
+
+.trade-plan-note {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.trade-plan-wait .trade-plan-value {
+  color: var(--accent-yellow);
+}
+
 .timeframe-reasoning {
   margin-top: 8px;
   font-size: 11px;
@@ -521,6 +564,11 @@ body {
   width: 100%;
   border-collapse: collapse;
   margin-top: 8px;
+  min-width: 640px;
+}
+
+.events-table-wrap {
+  overflow-x: auto;
 }
 
 .events-table th,
@@ -535,6 +583,11 @@ body {
   color: var(--text-secondary);
   text-transform: uppercase;
   font-size: 11px;
+}
+
+.events-table th:not(:first-child),
+.events-table td:not(:first-child) {
+  white-space: nowrap;
 }
 
 /* Signal History */
