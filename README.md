@@ -45,6 +45,10 @@ npm --prefix frontend run dev, затем http://localhost:5173.
 ## Публикация
 
 Нужен хостинг Node.js backend. В корне подготовлен render.yaml.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/alexvispio-hue/Silver-analyzer/tree/codex/real-market-data)
+
+Кнопка использует проверенную ветку `codex/real-market-data` с исправлениями.
+Перед созданием сервиса проверьте план Free. API-ключи для запуска не обязательны.
 [Пошаговая инструкция](docs/DEPLOYMENT.md).
 GitHub Pages не запускает Express и не подходит для этой полной версии.
 

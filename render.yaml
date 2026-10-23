@@ -6,6 +6,7 @@ services:
     buildCommand: npm ci --prefix backend && npm ci --prefix frontend && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
+    autoDeployTrigger: off
     envVars:
       - key: NODE_VERSION
         value: 22
