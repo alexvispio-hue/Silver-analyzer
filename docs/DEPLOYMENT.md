@@ -25,7 +25,7 @@ FRED берётся из публичных CSV, новости — Yahoo Financ
 Команды сборки и запуска:
 
 ```sh
-npm ci --prefix backend && npm ci --prefix frontend && npm run build
+npm ci --prefix backend --omit=dev && npm ci --prefix frontend --include=dev && npm run build
 npm start
 ```
 
