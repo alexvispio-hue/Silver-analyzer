@@ -45,6 +45,22 @@ test('GoldPrice 403 falls back to identified futures quote and caches it', async
   assert.equal(quoteRequests, 1);
 });
 
+test('blocked primary is skipped after quote cache expires, then retried after cooldown', async () => {
+  const realNow = Date.now;
+  const start = realNow();
+  try {
+    Date.now = () => start + 31000;
+    const result = await price.getCurrentPrice();
+    assert.equal(result.instrument, 'SI=F');
+    assert.equal(quoteRequests, 1);
+    Date.now = () => start + 3601000;
+    await price.getCurrentPrice();
+    assert.equal(quoteRequests, 2);
+  } finally {
+    Date.now = realNow;
+  }
+});
+
 test('all chart timeframes contain valid OHLC candles; 4h buckets are aligned', async () => {
   for (const timeframe of ['1h', '4h', '1d', '1w']) {
     const data = await price.getChartData(timeframe);

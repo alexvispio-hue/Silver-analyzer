@@ -2,6 +2,7 @@ import { priceDb } from '../models/database.js';
 
 let cachedQuote = null;
 let lastUpdate = 0;
+let nextGoldPriceAttempt = 0;
 const historyPeriodCache = {
   '1mo': { data: [], lastUpdate: 0 },
   '3mo': { data: [], lastUpdate: 0 },
@@ -101,10 +102,13 @@ async function fetchCurrentPrice() {
       return cachedQuote;
     }
 
+    // A blocked provider should not be retried on every quote refresh.
+    if (now < nextGoldPriceAttempt) throw new Error('GoldPrice retry cooldown');
+
     // Fetch live silver price from goldprice.org
     const response = await fetch(GOLDPRICE_API, { signal: AbortSignal.timeout(10000) });
     if (!response.ok) {
-      throw new Error(`GoldPrice API error: ${response.status}`);
+      throw Object.assign(new Error(`GoldPrice API error: ${response.status}`), { status: response.status });
     }
 
     const data = await response.json();
@@ -148,7 +152,11 @@ async function fetchCurrentPrice() {
 
     return cachedQuote;
   } catch (error) {
-    console.error('Error fetching live price:', error.message);
+    if (Date.now() >= nextGoldPriceAttempt) {
+      const retryDelay = error.status === 403 ? 60 * 60 * 1000 : 5 * 60 * 1000;
+      nextGoldPriceAttempt = Date.now() + retryDelay;
+      console.warn(`${error.message}; trying Yahoo Finance. GoldPrice retry after ${new Date(nextGoldPriceAttempt).toISOString()}`);
+    }
     // Yahoo is a futures quote, so identify the fallback instrument explicitly.
     try {
       const result = await fetchYahooHistorical('5d', '1d');
@@ -173,6 +181,7 @@ async function fetchCurrentPrice() {
       await priceDb.insert(cachedQuote);
       return cachedQuote;
     } catch (fallbackError) {
+      console.error('Current price providers unavailable:', fallbackError.message);
       if (cachedQuote) return { ...cachedQuote, stale: true };
       throw new Error('Price providers unavailable', { cause: fallbackError });
     }
