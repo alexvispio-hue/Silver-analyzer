@@ -1,108 +1,81 @@
-# XAGUSD Silver Analyzer
+# Silver Analyzer
 
-Веб-приложение для анализа цены серебра (XAGUSD) с рекомендательными торговыми сигналами.
+Веб-приложение с реальными рыночными данными: React, Node.js, Express, SQLite и WebSocket.
+Синтетического режима в приложении нет. При недоступности источника показывается ошибка,
+Н/Д или явно обозначенный сохранённый результат.
 
-## Функциональность
+## Данные
 
-- **Технический анализ**: RSI, MACD, SMA, уровни поддержки/сопротивления
-- **Фундаментальный анализ**: ставка ФРС, инфляция, баланс спроса/предложения
-- **Новостной анализ**: агрегация новостей с sentiment-анализом
-- **Торговые сигналы**: STRONG BUY / BUY / HOLD / SELL / STRONG SELL
-- **История сигналов**: отслеживание точности прогнозов
+- Цена: GoldPrice XAG spot; при недоступности — реальный фьючерс Yahoo Finance SI=F.
+  Источник, инструмент и время котировки видны в интерфейсе.
+- Свечи 1H/4H/1D/1W и технический анализ: Yahoo Finance SI=F.
+- Макроэкономика: последние опубликованные наблюдения FRED — эффективная ставка ФРС,
+  инфляция год к году, инфляционные ожидания, безработица, изменение занятости и продаж.
+  Для каждого показателя отображаются период наблюдения и ссылка на исходную серию.
+- Новости: Yahoo Finance RSS с настоящими заголовками, ссылками и датами.
+  NewsAPI можно включить отдельно при наличии подходящей подписки.
+- Сигналы: рассчитываются из полученных данных. Это эвристическая интерпретация,
+  а не доказанный прогноз доходности.
 
-## Установка
+Фиксированные дефицит 800 тонн, доли стран, вымышленные новости, приблизительные даты
+релизов и прогнозы консенсуса удалены. Календарь требует отдельного провайдера.
 
-### Требования
-- Node.js 18+
-- npm или yarn
+## Запуск
 
-### 1. Получите бесплатные API ключи
+Node.js 22.12+ и npm. Команды из корня:
 
-- **NewsAPI**: https://newsapi.org/register
-- **FRED API**: https://fred.stlouisfed.org/docs/api/api_key.html
-
-### 2. Настройте backend
-
-```bash
-cd backend
-
-# Создайте файл .env из примера
-cp .env.example .env
-
-# Добавьте ваши API ключи в .env
-# NEWS_API_KEY=your_key
-# FRED_API_KEY=your_key
-
-# Установите зависимости
-npm install
-
-# Запустите сервер
-npm run dev
+```sh
+npm ci --prefix backend
+npm ci --prefix frontend
+npm test
+npm run build
+npm start
 ```
 
-Backend будет доступен на http://localhost:3001
+Открыть http://localhost:3001. Backend раздаёт сайт, API и WebSocket на одном домене.
 
-### 3. Настройте frontend
+По умолчанию ключи не обязательны: FRED загружает публичный CSV, новости — RSS.
+Для FRED API скопировать backend/.env.example в backend/.env и добавить FRED_API_KEY.
+NEWS_PROVIDER=newsapi включает NewsAPI с NEWS_API_KEY; бесплатный Developer-план
+NewsAPI разрешён только для разработки. Ключи хранятся только на сервере.
 
-```bash
-cd frontend
+Для разработки: npm --prefix backend run dev и в другом терминале
+npm --prefix frontend run dev, затем http://localhost:5173.
 
-# Установите зависимости
-npm install
+## Публикация
 
-# Запустите dev сервер
-npm run dev
-```
+Нужен хостинг Node.js backend. В корне подготовлен render.yaml.
+[Пошаговая инструкция](docs/DEPLOYMENT.md).
+GitHub Pages не запускает Express и не подходит для этой полной версии.
 
-Frontend будет доступен на http://localhost:5173
+## Возможности
 
-## API Endpoints
+- Свечные и OHLC-графики, RSI, MACD, SMA20/50/100/200, EMA, Bollinger Bands.
+- Поддержка/сопротивление, объёмные кластеры, четыре горизонта сигналов.
+- FRED, настоящие новости и простая оценка тональности по ключевым словам.
+- История сигналов в SQLite и оценка при наличии котировок около целевых 24/72 часов.
+- WebSocket, таймауты, кэш и резервные источники.
+- GitHub Actions: тесты и production-сборка.
 
-| Endpoint | Описание |
-|----------|----------|
-| `GET /api/price/current` | Текущая цена серебра |
-| `GET /api/price/history` | Исторические данные |
-| `GET /api/analysis/technical` | Технический анализ |
-| `GET /api/analysis/fundamental` | Фундаментальные данные |
-| `GET /api/news` | Новости рынка |
-| `GET /api/signals/current` | Текущий торговый сигнал |
-| `GET /api/signals/history` | История сигналов |
-| `GET /api/dashboard` | Все данные дашборда |
+## API
 
-## Структура проекта
-
-```
-silver-analyzer/
-├── backend/
-│   ├── src/
-│   │   ├── server.js           # Express сервер
-│   │   ├── config/             # Конфигурация
-│   │   ├── services/           # Бизнес-логика
-│   │   ├── routes/             # API эндпоинты
-│   │   ├── models/             # SQLite БД
-│   │   └── utils/              # Индикаторы
-│   └── package.json
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx             # Главный компонент
-│   │   ├── components/         # UI компоненты
-│   │   └── services/           # API клиент
-│   └── package.json
-└── README.md
-```
-
-## Технологии
-
-- **Backend**: Node.js, Express, SQLite, WebSocket
-- **Frontend**: React, Recharts, Vite
-- **Данные**: Yahoo Finance, NewsAPI, FRED API
+/api/health, /api/dashboard,
+/api/price/current, /api/price/history?period=3mo,
+/api/price/chart?timeframe=1d, /api/price/timeframes, /api/price/changes,
+/api/analysis/technical, /api/analysis/fundamental,
+/api/news, /api/news/sentiment,
+/api/signals/current, /api/signals/history?limit=20, /api/signals/stats,
+/ws.
 
 ## Ограничения
 
-- NewsAPI бесплатный план: 100 запросов/день
-- Yahoo Finance: рекомендуется не чаще 1 раз/мин
-- Сигналы носят информационный характер и не являются финансовой рекомендацией
+Реальные данные могут быть задержаны. SI=F — фьючерс, XAGUSD — spot: инструменты
+не идентичны. Не следует считать расчёты по фьючерсу точным spot-анализом.
+Методика сигналов не подтверждена бэктестом; это информационный проект.
+Месячные значения FRED — наблюдения за указанным периодом, а не сегодняшние решения ФРС.
 
-## Лицензия
+SQLite: backend/data.db или DB_PATH. Для постоянной истории на хостинге нужен
+persistent disk или внешняя БД. Старые оценки сигналов до исправления расчёта 24ч
+не следует использовать как доказательство точности.
 
-MIT
+[Результаты проверки](docs/REVIEW.md).

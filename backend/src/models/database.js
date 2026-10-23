@@ -1,17 +1,21 @@
 import initSqlJs from 'sql.js';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const dbPath = join(__dirname, '../../data.db');
+const dbPath = process.env.DB_PATH || join(__dirname, '../../data.db');
 
 let db = null;
+let initialization;
 
 async function getDb() {
-  if (db) return db;
+  if (!initialization) initialization = initializeDb();
+  return initialization;
+}
 
+async function initializeDb() {
   const SQL = await initSqlJs();
 
   if (existsSync(dbPath)) {
@@ -69,7 +73,8 @@ async function getDb() {
 }
 
 function saveDb() {
-  if (db) {
+  if (db && dbPath !== ':memory:') {
+    mkdirSync(dirname(dbPath), { recursive: true });
     const data = db.export();
     const buffer = Buffer.from(data);
     writeFileSync(dbPath, buffer);
@@ -77,6 +82,13 @@ function saveDb() {
 }
 
 export const priceDb = {
+  async getAtTime(isoTimestamp) {
+    const database = await getDb();
+    const result = database.exec(`SELECT price FROM price_history
+      WHERE timestamp >= datetime(?) AND timestamp <= datetime(?, '+1 hour')
+      ORDER BY timestamp ASC LIMIT 1`, [isoTimestamp, isoTimestamp]);
+    return result[0]?.values[0]?.[0] ?? null;
+  },
   async insert(data) {
     const database = await getDb();
     database.run(
@@ -87,6 +99,7 @@ export const priceDb = {
   },
 
   async getRecent(limit = 500) {
+    limit = Math.max(1, Math.min(500, Number.parseInt(limit, 10) || 500));
     const database = await getDb();
     const result = database.exec(`SELECT * FROM price_history ORDER BY timestamp DESC LIMIT ${limit}`);
     if (result.length === 0) return [];
@@ -114,6 +127,7 @@ export const signalDb = {
   },
 
   async getRecent(limit = 50) {
+    limit = Math.max(1, Math.min(500, Number.parseInt(limit, 10) || 50));
     const database = await getDb();
     const result = database.exec(`SELECT * FROM signals ORDER BY timestamp DESC LIMIT ${limit}`);
     if (result.length === 0) return [];
@@ -148,7 +162,8 @@ export const signalDb = {
       SELECT
         COUNT(*) as total,
         SUM(CASE WHEN outcome = 'correct' THEN 1 ELSE 0 END) as correct,
-        SUM(CASE WHEN outcome = 'incorrect' THEN 1 ELSE 0 END) as incorrect
+        SUM(CASE WHEN outcome = 'incorrect' THEN 1 ELSE 0 END) as incorrect,
+        AVG((price_after_24h - price_at_signal) / price_at_signal * 100) as avg_change_24h
       FROM signals
       WHERE outcome IS NOT NULL
     `);
@@ -157,7 +172,8 @@ export const signalDb = {
     return {
       total: row[0] || 0,
       correct: row[1] || 0,
-      incorrect: row[2] || 0
+      incorrect: row[2] || 0,
+      avg_change_24h: row[3] ?? null
     };
   }
 };
@@ -174,6 +190,7 @@ export const newsDb = {
   },
 
   async getRecent(limit = 20) {
+    limit = Math.max(1, Math.min(500, Number.parseInt(limit, 10) || 20));
     const database = await getDb();
     const result = database.exec(`SELECT * FROM news_cache ORDER BY published_at DESC LIMIT ${limit}`);
     if (result.length === 0) return [];

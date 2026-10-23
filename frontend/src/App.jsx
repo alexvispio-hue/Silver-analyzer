@@ -22,12 +22,14 @@ export default function App() {
   const [signalStats, setSignalStats] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   // Initial data fetch
   useEffect(() => {
     async function fetchAllData() {
       try {
         setError(null);
+        const signalRequest = api.getCurrentSignal();
 
         const [
           priceData,
@@ -39,31 +41,35 @@ export default function App() {
           newsData,
           historySignals,
           statsData
-        ] = await Promise.all([
+        ] = await Promise.allSettled([
           api.getCurrentPrice(),
           api.getPriceChanges(),
           api.getPriceHistory('3mo'),
-          api.getCurrentSignal(),
+          signalRequest,
           api.getTechnicalAnalysis(),
           api.getFundamentalData(),
           api.getNews(),
-          api.getSignalHistory(20),
-          api.getSignalStats()
+          signalRequest.catch(() => null).then(() => api.getSignalHistory(20)),
+          signalRequest.catch(() => null).then(() => api.getSignalStats())
         ]);
 
-        setPrice(priceData);
-        setPriceChanges(changesData);
-        setPriceHistory(historyData);
-        setSignal(signalData);
-        setTechnical(technicalData);
-        setFundamental(fundamentalData);
-        setNews(newsData);
-        setSignalHistory(historySignals);
-        setSignalStats(statsData);
+        const updates = [
+          [priceData, setPrice], [changesData, setPriceChanges], [historyData, setPriceHistory],
+          [signalData, setSignal], [technicalData, setTechnical], [fundamentalData, setFundamental],
+          [newsData, setNews], [historySignals, setSignalHistory], [statsData, setSignalStats]
+        ];
+        updates.forEach(([result, setter]) => {
+          if (result.status === 'fulfilled') setter(result.value);
+        });
+        if (updates.some(([result]) => result.status === 'rejected')) {
+          setError('Часть данных недоступна. Источники могут временно не отвечать. Повторите загрузку.');
+        }
         setLastUpdate(new Date());
       } catch (err) {
         console.error('Error fetching data:', err);
-        setError('Не удалось загрузить данные. Убедитесь, что бэкенд запущен на порту 3001.');
+        setError('Не удалось загрузить данные. Повторите попытку позже.');
+      } finally {
+        setLoading(false);
       }
     }
 
@@ -116,6 +122,11 @@ export default function App() {
           {lastUpdate && `Обновлено: ${lastUpdate.toLocaleTimeString('ru-RU')}`}
         </div>
       </header>
+      <div className="project-intro">
+        <p>Реальные рыночные данные · Silver Analyzer</p>
+        <p>Источник и время котировки указаны в карточке. Графики и технические индикаторы рассчитаны по фьючерсу SI=F. Макроэкономика — FRED, новости — внешняя новостная лента. Данные могут поступать с задержкой.</p>
+        <a href="https://github.com/alexvispio-hue/Silver-analyzer" target="_blank" rel="noopener noreferrer">Исходный код на GitHub ↗</a>
+      </div>
 
       {error && (
         <div style={{
@@ -126,28 +137,33 @@ export default function App() {
           marginBottom: '20px',
           color: 'var(--accent-red)'
         }}>
-          {error}
+          {error} <button className="toggle-btn" onClick={() => window.location.reload()}>Повторить</button>
         </div>
       )}
 
       <div className="dashboard">
-        <PriceCard price={price} changes={priceChanges} />
-        <SignalCard signal={signal} />
-        <TechnicalPanel analysis={technical} />
+        {!loading && !price ? <Unavailable className="price-card" label="Цена недоступна" /> : <PriceCard price={price} changes={priceChanges} />}
+        {!loading && !signal ? <Unavailable className="signal-card" label="Сигналы недоступны" /> : <SignalCard signal={signal} />}
+        {!loading && !technical ? <Unavailable className="technical-card" label="Технический анализ недоступен" /> : <TechnicalPanel analysis={technical} />}
 
         <PriceChart history={priceHistory} levels={technical?.levels} />
-        <LevelsCard
+        {!loading && !technical ? <Unavailable className="levels-card" label="Уровни недоступны" /> : <LevelsCard
           levels={technical?.levels}
           currentPrice={price?.price}
           volumeClusters={technical?.volumeClusters}
           longTermSupports={technical?.longTermSupports}
-        />
+        />}
 
         <NewsPanel news={news} />
-        <FundamentalPanel data={fundamental} />
+        {!loading && !fundamental ? <Unavailable className="fundamental-card" label="Фундаментальные данные недоступны" /> : <FundamentalPanel data={fundamental} />}
 
         <SignalHistory history={signalHistory} stats={signalStats} />
       </div>
+      <footer className="data-note">React · Node.js · Express · SQLite · WebSocket · RSI / MACD / SMA. Информационный проект, не финансовая рекомендация.</footer>
     </div>
   );
+}
+
+function Unavailable({ className, label }) {
+  return <div className={`card ${className}`} role="status">{label}</div>;
 }

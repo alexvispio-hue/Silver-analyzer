@@ -31,7 +31,7 @@ export default function NewsPanel({ news }) {
       <div className="news-list">
         {news.length === 0 ? (
           <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '20px' }}>
-            Нет новостей
+            Источник новостей временно недоступен.
           </div>
         ) : (
           news.slice(0, 10).map((item, i) => (
@@ -54,7 +54,7 @@ export default function NewsPanel({ news }) {
                 )}
               </div>
               <div className="news-meta">
-                <span>{item.source} • {formatDate(item.publishedAt)}</span>
+                <span>{item.source} • {formatDate(item.publishedAt)}{item.stale && ' • Сохранённая новость'}</span>
                 <span
                   className="news-sentiment"
                   style={{

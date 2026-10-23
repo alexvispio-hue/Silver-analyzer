@@ -19,6 +19,7 @@ async function fetchYahooHistorical(range = '3mo', interval = '1d') {
   const url = `${YAHOO_CHART_API}?interval=${interval}&range=${range}`;
 
   const response = await fetch(url, {
+    signal: AbortSignal.timeout(10000),
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
@@ -85,7 +86,13 @@ const CACHE_TTL = {
   '1w': 1800000     // 30 минут для недельных
 };
 
+let pendingQuote;
 export async function getCurrentPrice() {
+  if (!pendingQuote) pendingQuote = fetchCurrentPrice().finally(() => { pendingQuote = null; });
+  return pendingQuote;
+}
+
+async function fetchCurrentPrice() {
   try {
     const now = Date.now();
 
@@ -95,7 +102,7 @@ export async function getCurrentPrice() {
     }
 
     // Fetch live silver price from goldprice.org
-    const response = await fetch(GOLDPRICE_API);
+    const response = await fetch(GOLDPRICE_API, { signal: AbortSignal.timeout(10000) });
     if (!response.ok) {
       throw new Error(`GoldPrice API error: ${response.status}`);
     }
@@ -111,13 +118,16 @@ export async function getCurrentPrice() {
     const previousClose = item.xagClose;   // Previous close price
     const change = item.chgXag;            // Change in USD
     const changePercent = item.pcXag;      // Change in %
+    if (![price, previousClose, change, changePercent].every(Number.isFinite) || price <= 0 || previousClose <= 0) {
+      throw new Error('Invalid GoldPrice quote');
+    }
 
     cachedQuote = {
       price: parseFloat(price.toFixed(4)),
       previousClose: parseFloat(previousClose.toFixed(4)),
-      open: parseFloat(previousClose.toFixed(4)), // API doesn't provide open, use previous close
-      high: parseFloat(Math.max(price, previousClose).toFixed(4)),
-      low: parseFloat(Math.min(price, previousClose).toFixed(4)),
+      open: null,
+      high: null,
+      low: null,
       change: parseFloat(change.toFixed(4)),
       changePercent: parseFloat(changePercent.toFixed(2)),
       volume: null, // Spot price doesn't have volume
@@ -139,9 +149,33 @@ export async function getCurrentPrice() {
     return cachedQuote;
   } catch (error) {
     console.error('Error fetching live price:', error.message);
-    // Return cached data on error
-    if (cachedQuote) return cachedQuote;
-    throw error;
+    // Yahoo is a futures quote, so identify the fallback instrument explicitly.
+    try {
+      const result = await fetchYahooHistorical('5d', '1d');
+      const candles = buildCandlesFromYahoo(result);
+      const latest = candles.at(-1);
+      const price = result.meta?.regularMarketPrice ?? latest?.close;
+      const previousClose = result.meta?.previousClose ?? candles.at(-2)?.close;
+      if (!Number.isFinite(price) || !Number.isFinite(previousClose) || previousClose <= 0) {
+        throw new Error('Invalid Yahoo quote');
+      }
+      cachedQuote = {
+        price, previousClose, open: latest?.open ?? price,
+        high: latest?.high ?? price, low: latest?.low ?? price,
+        change: price - previousClose,
+        changePercent: (price - previousClose) / previousClose * 100,
+        volume: latest?.volume ?? null,
+        timestamp: new Date((result.meta.regularMarketTime ?? latest.timestamp / 1000) * 1000).toISOString(),
+        source: 'Yahoo Finance · SI=F (фьючерс, резервный источник)',
+        instrument: 'SI=F', fallback: true
+      };
+      lastUpdate = Date.now();
+      await priceDb.insert(cachedQuote);
+      return cachedQuote;
+    } catch (fallbackError) {
+      if (cachedQuote) return { ...cachedQuote, stale: true };
+      throw new Error('Price providers unavailable', { cause: fallbackError });
+    }
   }
 }
 

@@ -35,7 +35,7 @@ export default function SignalHistory({ history, stats }) {
         {stats && (
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
             Точность: <span style={{ color: 'var(--accent-green)', fontWeight: 600 }}>
-              {stats.accuracy}%
+              {stats.accuracy === 'N/A' ? 'Н/Д' : `${stats.accuracy}%`}
             </span> ({stats.correctSignals}/{stats.totalSignals} сигналов)
           </div>
         )}

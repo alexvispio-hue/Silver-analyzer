@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: silver-analyzer
+    runtime: node
+    plan: free
+    buildCommand: npm ci --prefix backend && npm ci --prefix frontend && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NODE_ENV
+        value: production
+      - key: DB_PATH
+        value: /tmp/silver-analyzer/data.db
+      - key: NEWS_PROVIDER
+        value: yahoo
