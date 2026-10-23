@@ -1,5 +1,13 @@
 # Публикация версии с реальными данными
 
+## Работающая версия
+
+Публичный адрес: **https://silver-analyzer.onrender.com/**.
+Развёрнута 23 октября 2026 на бесплатном Render Web Service из ветки
+`codex/real-market-data`, коммит `284adff`. Проверены UI, API и реальные внешние данные.
+Сборка в production явно устанавливает frontend devDependencies через `--include=dev`.
+Обновления сервиса запускаются вручную в Render Dashboard.
+
 Приложение требует постоянно доступный Node.js backend: он загружает данные,
 рассчитывает сигналы, хранит историю и раздаёт React frontend. GitHub Pages
 не запускает такой backend. Синтетическая Pages-сборка удалена.
