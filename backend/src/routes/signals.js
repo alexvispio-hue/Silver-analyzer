@@ -2,8 +2,7 @@ import { Router } from 'express';
 import {
   generateSignal,
   getSignalHistory,
-  getSignalStats,
-  updateSignalOutcomes
+  getSignalStats
 } from '../services/signalService.js';
 
 const router = Router();
@@ -21,7 +20,6 @@ router.get('/current', async (req, res) => {
 // Get signal history
 router.get('/history', async (req, res) => {
   try {
-    await updateSignalOutcomes();
     const limit = parseInt(req.query.limit) || 50;
     const history = await getSignalHistory(limit);
     res.json(history);
@@ -33,7 +31,6 @@ router.get('/history', async (req, res) => {
 // Get signal statistics
 router.get('/stats', async (req, res) => {
   try {
-    await updateSignalOutcomes();
     const stats = await getSignalStats();
     res.json(stats);
   } catch (error) {

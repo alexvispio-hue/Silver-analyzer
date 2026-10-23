@@ -1,9 +1,10 @@
-import axios from 'axios';
+import { XMLParser } from 'fast-xml-parser';
 import { config } from '../config/config.js';
 import { newsDb } from '../models/database.js';
 
 let cachedNews = [];
 let lastFetch = 0;
+let pending;
 
 const KEYWORDS = [
   'silver price',
@@ -51,6 +52,35 @@ function analyzeSentiment(text) {
 }
 
 export async function getNews() {
+  if (!pending) pending = loadNews().finally(() => { pending = null; });
+  return pending;
+}
+
+async function fetchArticles() {
+  if (config.newsProvider === 'newsapi' && config.newsApiKey) {
+    try {
+      const url = new URL('https://newsapi.org/v2/everything');
+      url.search = new URLSearchParams({ q: KEYWORDS.slice(0, 3).join(' OR '), language: 'en', sortBy: 'publishedAt', pageSize: '20' });
+      const response = await fetch(url, { headers: { 'X-Api-Key': config.newsApiKey }, signal: AbortSignal.timeout(10000) });
+      if (!response.ok) throw new Error('NewsAPI unavailable');
+      const data = await response.json();
+      if (!Array.isArray(data.articles)) throw new Error('Invalid NewsAPI data');
+      return data.articles;
+    } catch { console.warn('NewsAPI unavailable; trying Yahoo RSS'); }
+  }
+  const response = await fetch('https://finance.yahoo.com/rss/headline?s=SI%3DF', { signal: AbortSignal.timeout(10000) });
+  if (!response.ok) throw new Error('Yahoo RSS unavailable');
+  const xml = await response.text();
+  if (!xml.trim().startsWith('<')) throw new Error('Invalid RSS');
+  const parsed = new XMLParser({ processEntities: true }).parse(xml);
+  const items = parsed.rss?.channel?.item || [];
+  return (Array.isArray(items) ? items : [items]).map(item => ({
+    title: item.title, description: null, source: { name: 'Yahoo Finance RSS' },
+    url: item.link, publishedAt: item.pubDate
+  }));
+}
+
+async function loadNews() {
   try {
     const now = Date.now();
 
@@ -59,89 +89,39 @@ export async function getNews() {
       return cachedNews;
     }
 
-    // If no API key, return cached or empty
-    if (!config.newsApiKey) {
-      console.warn('NewsAPI key not configured');
-      return cachedNews.length > 0 ? cachedNews : getMockNews();
-    }
-
-    const query = KEYWORDS.slice(0, 3).join(' OR ');
-    const response = await axios.get('https://newsapi.org/v2/everything', {
-      params: {
-        q: query,
-        language: 'en',
-        sortBy: 'publishedAt',
-        pageSize: 20,
-        apiKey: config.newsApiKey
-      }
-    });
-
-    if (response.data.articles) {
-      cachedNews = response.data.articles.map(article => {
+    const articles = await fetchArticles();
+    if (articles) {
+      cachedNews = articles.filter(article => typeof article.title === 'string' && article.title !== '[Removed]' && /^https?:\/\//i.test(article.url || '') && Number.isFinite(Date.parse(article.publishedAt))).map(article => {
         const sentimentText = `${article.title || ''} ${article.description || ''}`;
         const sentiment = analyzeSentiment(sentimentText);
 
         const newsItem = {
           title: article.title,
-          description: article.description,
-          source: article.source?.name,
+          description: article.description || null,
+          source: article.source?.name || 'Unknown',
           url: article.url,
-          publishedAt: article.publishedAt,
+          publishedAt: new Date(article.publishedAt).toISOString(),
           sentiment,
           sentimentLabel: sentiment > 0.2 ? 'BULLISH' :
             sentiment < -0.2 ? 'BEARISH' : 'NEUTRAL'
         };
 
-        // Save to database
-        newsDb.insert(newsItem);
-
         return newsItem;
       });
+
+      for (const newsItem of cachedNews) await newsDb.insert(newsItem);
 
       lastFetch = now;
 
       // Clean old news
-      newsDb.clearOld();
+      await newsDb.clearOld();
     }
 
     return cachedNews;
   } catch (error) {
     console.error('News fetch error:', error.message);
-    return cachedNews.length > 0 ? cachedNews : getMockNews();
+    return cachedNews.map(item => ({ ...item, stale: true }));
   }
-}
-
-function getMockNews() {
-  // Return mock news for demonstration when API key is not available
-  return [
-    {
-      title: 'Silver prices steady as markets await Fed decision',
-      description: 'Precious metals remain stable ahead of the Federal Reserve\'s interest rate announcement.',
-      source: 'Financial News',
-      url: '#',
-      publishedAt: new Date().toISOString(),
-      sentiment: 0,
-      sentimentLabel: 'NEUTRAL'
-    },
-    {
-      title: 'Industrial demand for silver expected to grow in 2025',
-      description: 'Solar panel production and electronics manufacturing drive silver demand higher.',
-      source: 'Metal Markets',
-      url: '#',
-      publishedAt: new Date(Date.now() - 3600000).toISOString(),
-      sentiment: 0.5,
-      sentimentLabel: 'BULLISH'
-    },
-    {
-      title: 'Dollar strength pressures precious metals',
-      description: 'Rising dollar index creates headwinds for gold and silver prices.',
-      source: 'Market Watch',
-      url: '#',
-      publishedAt: new Date(Date.now() - 7200000).toISOString(),
-      sentiment: -0.3,
-      sentimentLabel: 'BEARISH'
-    }
-  ];
 }
 
 export async function getNewsSentiment() {

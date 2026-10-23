@@ -6,8 +6,8 @@
 export default function LevelsCard({ levels, currentPrice, volumeClusters, longTermSupports }) {
   if (!levels) return <div className="card levels-card loading"><div className="spinner" /></div>;
 
-  const support = (levels.support || []).map(normalizeLevel).filter(Number.isFinite);
-  const resistance = (levels.resistance || []).map(normalizeLevel).filter(Number.isFinite);
+  const support = (levels.support || []).map(normalizeLevel).filter(Number.isFinite).sort((a, b) => b - a);
+  const resistance = (levels.resistance || []).map(normalizeLevel).filter(Number.isFinite).sort((a, b) => a - b);
   const supportZones = volumeClusters?.support || [];
   const resistanceZones = volumeClusters?.resistance || [];
 

@@ -24,13 +24,18 @@ export default function PriceChart({ history: initialHistory, levels }) {
   const [timeframe, setTimeframe] = useState('1d');
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   // Загружаем данные при изменении таймфрейма
   useEffect(() => {
+    let cancelled = false;
     async function fetchChartData() {
       setLoading(true);
+      setError(null);
+      setChartData([]);
       try {
         const data = await api.getChartData(timeframe);
+        if (cancelled) return;
         if (data.candles && data.candles.length > 0) {
           const processed = data.candles.map(item => ({
             date: item.date,
@@ -43,8 +48,12 @@ export default function PriceChart({ history: initialHistory, levels }) {
             isGreen: item.close >= item.open
           }));
           setChartData(processed);
+        } else {
+          setError('Нет свечей для выбранного периода.');
         }
       } catch (error) {
+        if (cancelled) return;
+        setError('Не удалось загрузить график. Выберите другой период или повторите загрузку.');
         console.error('Error fetching chart data:', error);
         // For non-daily timeframes do not silently fall back to daily candles.
         if (timeframe === '1d' && initialHistory && initialHistory.length > 0) {
@@ -58,17 +67,19 @@ export default function PriceChart({ history: initialHistory, levels }) {
             isGreen: item.close >= item.open
           }));
           setChartData(processed);
+          setError(null);
         }
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
 
     fetchChartData();
+    return () => { cancelled = true; };
   }, [timeframe, initialHistory]);
 
   // Инициализация при первой загрузке
   useEffect(() => {
-    if (initialHistory && initialHistory.length > 0 && chartData.length === 0) {
+    if (timeframe === '1d' && initialHistory && initialHistory.length > 0 && chartData.length === 0) {
       const processed = initialHistory.map(item => ({
         date: item.date,
         open: item.open,
@@ -81,10 +92,6 @@ export default function PriceChart({ history: initialHistory, levels }) {
       setChartData(processed);
     }
   }, [initialHistory]);
-
-  if (loading || chartData.length === 0) {
-    return <div className="card chart-card loading"><div className="spinner" /></div>;
-  }
 
   const allPrices = chartData.flatMap(d => [d.high, d.low]);
   const minPrice = Math.min(...allPrices) * 0.98;
@@ -128,7 +135,7 @@ export default function PriceChart({ history: initialHistory, levels }) {
         </div>
       </div>
 
-      <div className="chart-container">
+      {loading ? <div className="loading"><div className="spinner" /></div> : error || chartData.length === 0 ? <p role="status">{error || 'Нет данных'}</p> : <div className="chart-container">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
@@ -319,7 +326,7 @@ export default function PriceChart({ history: initialHistory, levels }) {
             </Bar>
           </ComposedChart>
         </ResponsiveContainer>
-      </div>
+      </div>}
     </div>
   );
 }

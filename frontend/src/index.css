@@ -64,6 +64,7 @@ body {
 }
 
 .card {
+  min-width: 0;
   background: var(--bg-card);
   border-radius: 12px;
   padding: 20px;
@@ -669,6 +670,11 @@ body {
 }
 
 @media (max-width: 768px) {
+  .header { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .header h1 { font-size: 20px; }
+  .chart-controls { flex-wrap: wrap; }
+  .chart-card .card-header { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .history-card { overflow-x: auto; }
   .dashboard {
     grid-template-columns: 1fr;
   }
@@ -684,3 +690,7 @@ body {
     grid-column: span 1;
   }
 }
+
+.data-note { font-size: 12px; color: var(--text-secondary); }
+footer.data-note { margin-top: 24px; }
+.source-link { color: var(--accent-blue); font-size: 11px; }

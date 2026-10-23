@@ -2,6 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
 import { config } from './config/config.js';
 import priceRoutes from './routes/price.js';
@@ -16,7 +19,7 @@ const app = express();
 const server = createServer(app);
 
 // WebSocket setup
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, path: '/ws' });
 
 // Middleware
 app.use(cors());
@@ -50,6 +53,14 @@ app.get('/api/dashboard', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Serve a production frontend from the same origin as API and WebSocket.
+app.use('/api', (req, res) => res.status(404).json({ error: 'API endpoint not found' }));
+const frontendDist = fileURLToPath(new URL('../../frontend/dist/', import.meta.url));
+if (existsSync(path.join(frontendDist, 'index.html'))) {
+  app.use(express.static(frontendDist));
+  app.get('*', (req, res) => res.sendFile(path.join(frontendDist, 'index.html')));
+}
 
 // WebSocket connections
 const clients = new Set();

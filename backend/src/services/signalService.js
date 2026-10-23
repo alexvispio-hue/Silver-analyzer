@@ -3,7 +3,7 @@ import { getFundamentalScore } from './fundamentalService.js';
 import { getNewsSentiment } from './newsService.js';
 import { getCurrentPrice, getChartData } from './priceService.js';
 import { RSI, MACD, EMA, SMA } from '../utils/indicators.js';
-import { signalDb } from '../models/database.js';
+import { signalDb, priceDb } from '../models/database.js';
 
 const SIGNALS = {
   STRONG_BUY: 'STRONG_BUY',
@@ -396,7 +396,21 @@ async function generateLongTermSignal(technicalData, fundamentalData) {
   };
 }
 
+let cachedSignal;
+let pendingSignal;
+
 export async function generateSignal() {
+  if (cachedSignal && Date.now() - Date.parse(cachedSignal.timestamp) < 5 * 60 * 1000) return cachedSignal;
+  if (!pendingSignal) {
+    pendingSignal = computeSignal().then(signal => {
+      cachedSignal = signal;
+      return signal;
+    }).finally(() => { pendingSignal = null; });
+  }
+  return pendingSignal;
+}
+
+async function computeSignal() {
   try {
     const [technicalData, fundamentalData, newsData, priceData, intraday1h, intraday4h] = await Promise.all([
       getTechnicalAnalysis(),
@@ -476,7 +490,7 @@ export async function getSignalHistory(limit = 50) {
     const signals = await signalDb.getRecent(limit);
     return signals.map((s) => ({
       id: s.id,
-      timestamp: s.timestamp,
+      timestamp: `${s.timestamp.replace(' ', 'T')}Z`,
       signal: s.signal,
       priceAtSignal: s.price_at_signal,
       totalScore: s.total_score,
@@ -502,7 +516,7 @@ export async function getSignalStats() {
       correctSignals: stats.correct || 0,
       incorrectSignals: stats.incorrect || 0,
       accuracy: stats.total > 0 ? ((stats.correct / stats.total) * 100).toFixed(1) : 'N/A',
-      avgChange24h: stats.avg_change_24h ? stats.avg_change_24h.toFixed(2) : 'N/A'
+      avgChange24h: stats.avg_change_24h != null ? stats.avg_change_24h.toFixed(2) : 'N/A'
     };
   } catch (error) {
     console.error('Signal stats error:', error.message);
@@ -513,16 +527,18 @@ export async function getSignalStats() {
 export async function updateSignalOutcomes() {
   try {
     const signals = await signalDb.getRecent(100);
-    const currentPrice = (await getCurrentPrice()).price;
-
     for (const signal of signals) {
-      if (signal.outcome) continue;
+      if (signal.price_after_24h != null && signal.price_after_72h != null) continue;
 
-      const signalTime = new Date(signal.timestamp).getTime();
+      const signalTime = new Date(`${signal.timestamp.replace(' ', 'T')}Z`).getTime();
       const now = Date.now();
       const hoursSinceSignal = (now - signalTime) / (1000 * 60 * 60);
 
       if (hoursSinceSignal >= 24 && !signal.price_after_24h) {
+        // Only a recorded quote within an hour of the target can evaluate a signal.
+        // Never label today's quote as a price from 24 hours after an old signal.
+        const currentPrice = await priceDb.getAtTime(new Date(signalTime + 24 * 3600000).toISOString());
+        if (currentPrice == null) continue;
         const signalName = signal.signal || '';
         const priceChange = currentPrice - signal.price_at_signal;
         const isBuySignal =
@@ -539,6 +555,13 @@ export async function updateSignalOutcomes() {
           (isHoldSignal && Math.abs(priceChange / signal.price_at_signal) < 0.02);
 
         await signalDb.updateOutcome(signal.id, currentPrice, null, wasCorrect ? 'correct' : 'incorrect');
+      }
+      if (hoursSinceSignal >= 72) {
+        const after72h = await priceDb.getAtTime(new Date(signalTime + 72 * 3600000).toISOString());
+        if (after72h != null) {
+          const updated = (await signalDb.getRecent(100)).find(item => item.id === signal.id);
+          await signalDb.updateOutcome(signal.id, updated.price_after_24h, after72h, updated.outcome);
+        }
       }
     }
   } catch (error) {

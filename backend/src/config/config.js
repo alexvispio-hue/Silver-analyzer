@@ -7,6 +7,7 @@ export const config = {
   // API Keys
   newsApiKey: process.env.NEWS_API_KEY || '',
   fredApiKey: process.env.FRED_API_KEY || '',
+  newsProvider: process.env.NEWS_PROVIDER || 'yahoo',
 
   // Update intervals (in milliseconds)
   priceUpdateInterval: 60 * 1000,      // 1 minute
@@ -14,5 +15,5 @@ export const config = {
   fundamentalUpdateInterval: 60 * 60 * 1000, // 1 hour
 
   // Symbol
-  symbol: 'XAGUSD=X' // Yahoo Finance symbol for Silver
+  symbol: 'SI=F' // Yahoo Finance silver futures; spot provider is identified separately
 };

@@ -26,7 +26,7 @@ export async function getTechnicalAnalysis() {
     ]);
 
     if (history.length < 50) {
-      return { error: 'Not enough historical data' };
+      throw new Error('Not enough historical data');
     }
 
     const closes = history.map((h) => h.close);
@@ -153,8 +153,8 @@ export async function getTechnicalAnalysis() {
         macd: macd
           ? {
               macd: parseFloat(macd.macd.toFixed(4)),
-              signal: macd.signal ? parseFloat(macd.signal.toFixed(4)) : null,
-              histogram: macd.histogram ? parseFloat(macd.histogram.toFixed(4)) : null
+              signal: macd.signal !== null ? parseFloat(macd.signal.toFixed(4)) : null,
+              histogram: macd.histogram !== null ? parseFloat(macd.histogram.toFixed(4)) : null
             }
           : null,
         sma20: sma20 ? parseFloat(sma20.toFixed(2)) : null,

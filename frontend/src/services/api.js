@@ -1,7 +1,7 @@
 const API_BASE = '/api';
 
 async function fetchApi(endpoint) {
-  const response = await fetch(`${API_BASE}${endpoint}`);
+  const response = await fetch(`${API_BASE}${endpoint}`, { signal: AbortSignal.timeout(25000) });
   if (!response.ok) {
     throw new Error(`API Error: ${response.status}`);
   }
@@ -36,25 +36,22 @@ export const api = {
 // WebSocket connection
 export function createWebSocket(onMessage) {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${protocol}//localhost:3001`);
+  let ws;
+  let timer;
+  let disposed = false;
+  function connect() {
+    ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
 
-  ws.onopen = () => {
-    console.log('WebSocket connected');
-  };
-
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    onMessage(data);
-  };
-
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
-  };
-
-  ws.onclose = () => {
-    console.log('WebSocket disconnected, reconnecting...');
-    setTimeout(() => createWebSocket(onMessage), 5000);
-  };
-
-  return ws;
+    ws.onopen = () => console.log('WebSocket connected');
+    ws.onmessage = (event) => {
+      try { onMessage(JSON.parse(event.data)); }
+      catch (error) { console.error('Invalid WebSocket message:', error); }
+    };
+    ws.onerror = (error) => console.error('WebSocket error:', error);
+    ws.onclose = () => {
+      if (!disposed) timer = setTimeout(connect, 5000);
+    };
+  }
+  connect();
+  return { close() { disposed = true; clearTimeout(timer); ws?.close(); } };
 }

@@ -8,10 +8,11 @@ export default function PriceCard({ price, changes }) {
   return (
     <div className="card price-card">
       <div className="card-header">
-        <span className="card-title">Серебро XAGUSD</span>
+        <span className="card-title">Серебро {price.instrument || 'XAGUSD'}</span>
       </div>
 
       <div className="current-price">${price.price?.toFixed(2)}</div>
+      <div className="data-note">{price.source} · {new Date(price.timestamp).toLocaleString('ru-RU')}{price.stale && ' · Данные устарели'}</div>
 
       <div className={`price-change ${isPositive ? 'positive' : 'negative'}`}>
         {isPositive ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
