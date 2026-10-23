@@ -122,12 +122,6 @@ export default function App() {
           {lastUpdate && `Обновлено: ${lastUpdate.toLocaleTimeString('ru-RU')}`}
         </div>
       </header>
-      <div className="project-intro">
-        <p>Реальные рыночные данные · Silver Analyzer</p>
-        <p>Источник и время котировки указаны в карточке. Графики и технические индикаторы рассчитаны по фьючерсу SI=F. Макроэкономика — FRED, новости — внешняя новостная лента. Данные могут поступать с задержкой.</p>
-        <a href="https://github.com/alexvispio-hue/Silver-analyzer" target="_blank" rel="noopener noreferrer">Исходный код на GitHub ↗</a>
-      </div>
-
       {error && (
         <div style={{
           background: 'rgba(255, 71, 87, 0.15)',
